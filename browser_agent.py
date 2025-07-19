@@ -1,6 +1,5 @@
 # Browser Control Agent
 # A conversational AI that can control browsers using natural language
-
 import asyncio
 import base64
 import io
@@ -11,7 +10,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 import re
 from contextlib import asynccontextmanager
-
 import google.generativeai as genai
 from playwright.async_api import async_playwright, Browser, Page, BrowserContext
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -30,30 +28,26 @@ class BrowserControlAgent:
         self.gemini_api_key = gemini_api_key
         genai.configure(api_key=gemini_api_key)
         self.model = genai.GenerativeModel('gemini-2.0-flash') # Changed to a valid, recent model
-        
+
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         self.playwright = None
-        
+
         # Conversation context
         self.conversation_history = []
         self.current_task = None
         self.task_state = {}
-        
+
     async def initialize_browser(self):
         """Initialize Playwright browser"""
         try:
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(
             headless=False,
-            channel="chrome",  # <-- ADD THIS LINE
+            channel="chrome",
             args=['--no-sandbox', '--disable-dev-shm-usage']
             )
-            # self.browser = await self.playwright.chromium.launch(
-            #     headless=False,  # Show browser for demo purposes
-            #     args=['--no-sandbox', '--disable-dev-shm-usage']
-            # )
             self.context = await self.browser.new_context(
                 viewport={'width': 1280, 'height': 720}
             )
@@ -99,26 +93,26 @@ class BrowserControlAgent:
         try:
             # Take screenshot for analysis
             screenshot_b64 = await self.take_screenshot()
-            
+
             # Get page info
             url = self.page.url
             title = await self.page.title()
-            
+
             # Create prompt for Gemini
             prompt = f"""
             You are a browser automation assistant. Analyze the current webpage and determine the next action.
-            
+
             Current URL: {url}
             Page Title: {title}
             User Intent: {user_intent}
             Current Task State: {json.dumps(self.task_state, indent=2)}
-            
+
             Based on the screenshot, determine:
             1. What action should be taken next?
             2. What elements should be interacted with?
             3. What information needs to be filled/clicked?
             4. Are there any forms, buttons, or input fields visible?
-            
+
             Respond in JSON format:
             {{
                 "action": "click|type|navigate|wait|complete",
@@ -129,15 +123,14 @@ class BrowserControlAgent:
                 "status": "continue|complete|error"
             }}
             """
-            
+
             response = self.model.generate_content(prompt)
-            
+
             try:
                 # Extract JSON from response
                 json_match = re.search(r'```json\s*(\{.*?\})\s*```', response.text, re.DOTALL)
                 if not json_match:
                     json_match = re.search(r'(\{.*?\})', response.text, re.DOTALL)
-
                 if json_match:
                     analysis = json.loads(json_match.group(1))
                 else:
@@ -151,18 +144,18 @@ class BrowserControlAgent:
             except json.JSONDecodeError as e:
                 logger.error(f"JSON Decode Error: {e}\nResponse was: {response.text}")
                 analysis = {
-                    "action": "wait", 
+                    "action": "wait",
                     "description": "Page analysis in progress...",
                     "status": "continue"
                 }
-            
+
             return {
                 "analysis": analysis,
                 "screenshot": screenshot_b64,
                 "url": url,
                 "title": title
             }
-            
+
         except Exception as e:
             logger.error(f"Error analyzing page: {e}")
             return {
@@ -171,17 +164,17 @@ class BrowserControlAgent:
                 "url": self.page.url if self.page else "",
                 "title": await self.page.title() if self.page else ""
             }
-        
+
     async def execute_action(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the determined action with added robustness and fallbacks."""
         if not self.page:
              return {
                 "success": False, "description": "Browser page not available.", "screenshot": "", "url": "", "title": ""
             }
-        
+
         action_info = analysis.get("analysis", {})
         action = action_info.get("action", "wait")
-        
+
         try:
             if action == "navigate":
                 url = action_info.get("value", "")
@@ -190,12 +183,11 @@ class BrowserControlAgent:
                 logger.info(f"Navigating to URL: {url}")
                 await self.page.goto(url)
                 await self.page.wait_for_load_state('networkidle')
-                
+
             elif action == "click":
                 selector = action_info.get("element_selector", "")
                 if not selector:
                     raise ValueError("Click action requires an 'element_selector'.")
-
                 logger.info(f"Executing click action. AI-provided selector: '{selector}'")
                 try:
                     # PRIMARY ATTEMPT: Use the selector from the AI directly.
@@ -207,7 +199,7 @@ class BrowserControlAgent:
                     # This is far more robust against the AI guessing selectors incorrectly.
                     # The 'selector' string itself might be the text to find (e.g., "Sign in").
                     logger.warning(f"Primary selector failed. Attempting fallback using text: '{selector}'")
-                    
+
                     # Use Playwright's get_by_text, which is smart about finding elements.
                     await self.page.get_by_text(selector, exact=True).first.click(timeout=3000)
                     logger.info(f"Successfully clicked using text-based fallback: '{selector}'")
@@ -217,17 +209,17 @@ class BrowserControlAgent:
                 value = action_info.get("value", "")
                 if not selector or value is None:
                     raise ValueError("Type action requires a 'element_selector' and 'value'.")
-                
+
                 logger.info(f"Attempting to type '{value}' into selector: {selector}")
                 await self.page.fill(selector, value)
-                    
+
             elif action == "wait":
                 await asyncio.sleep(2)
-            
+
             # Ensure the page is settled before taking the final screenshot
             await self.page.wait_for_load_state('domcontentloaded')
             screenshot_b64 = await self.take_screenshot()
-            
+
             return {
                 "success": True,
                 "description": action_info.get("description", "Action completed successfully"),
@@ -235,7 +227,7 @@ class BrowserControlAgent:
                 "url": self.page.url,
                 "title": await self.page.title()
             }
-            
+
         except Exception as e:
             logger.error(f"Error executing action '{action}': {e}", exc_info=True)
             return {
@@ -251,20 +243,20 @@ class BrowserControlAgent:
         try:
             # Add to conversation history
             self.conversation_history.append({"role": "user", "content": message})
-            
+
             intent_prompt = f"""
             Analyze the user's message and determine their intent for browser automation.
-            
+
             Message: "{message}"
             Conversation History: {json.dumps(self.conversation_history[-5:], indent=2)}
-            
+
             Determine:
             1. What task do they want to accomplish?
             2. What information is missing to complete the task?
             3. Should we start browser automation or ask for more details?
-            
+
             Common tasks: send email, search web, navigate to website, fill forms, etc.
-            
+
             Respond in JSON format:
             {{
                 "intent": "email|search|navigate|form|other",
@@ -274,14 +266,14 @@ class BrowserControlAgent:
                 "suggested_response": "What to say to user"
             }}
             """
-            
+
             intent_response = self.model.generate_content(intent_prompt)
-            
+
             try:
                 json_match = re.search(r'```json\s*(\{.*?\})\s*```', intent_response.text, re.DOTALL)
                 if not json_match:
                     json_match = re.search(r'(\{.*?\})', intent_response.text, re.DOTALL)
-                
+
                 if json_match:
                     intent_analysis = json.loads(json_match.group(1))
                 else:
@@ -302,23 +294,23 @@ class BrowserControlAgent:
                     "ready_to_start": False,
                     "suggested_response": "Let me help you with that. What specific website or action would you like me to perform?"
                 }
-            
+
             self.current_task = intent_analysis.get("task_description", message)
-            
+
             if intent_analysis.get("ready_to_start") and not intent_analysis.get("missing_info"):
                 if not self.browser:
                     await self.initialize_browser()
-                
+
                 # Default navigation for common tasks
                 initial_url = "https://www.google.com" # Default to google
                 if intent_analysis['intent'] == "email":
                     initial_url = "https://mail.google.com"
-                
+
                 await self.page.goto(initial_url)
                 await self.page.wait_for_load_state('networkidle')
-                
+
                 screenshot = await self.take_screenshot()
-                
+
                 return {
                     "response": f"Starting task: {self.current_task}. I've opened the browser.",
                     "screenshot": screenshot,
@@ -333,7 +325,7 @@ class BrowserControlAgent:
                     "missing_info": intent_analysis.get("missing_info", []),
                     "status": "waiting_for_info"
                 }
-                
+
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             return {
@@ -342,42 +334,41 @@ class BrowserControlAgent:
                 "status": "error"
             }
 
-# --- Fast Application Setup ---
-
+# --- FastAPI Application Setup ---
 # Global agent instance
 agent: Optional[BrowserControlAgent] = None
 
 @asynccontextmanager
-async def lifespan(app: Fast):
+async def lifespan(app: FastAPI):
     """
-    Handles startup and shutdown events for the Fast application.
+    Handles startup and shutdown events for the FastAPI application.
     This is the modern and recommended way to manage resources.
     """
     global agent
     # Startup: Initialize the agent
     logger.info("Application startup: Initializing BrowserControlAgent...")
-    
-    # IMPORTANT: Replace with your actual Gemini  key.
-    # For production, use an environment variable. e.g., os.getenv("GEMINI__KEY")
-    GEMINI__KEY = "Your__KEY" 
-    
-    if not GEMINI__KEY or "YOUR_GEMINI__KEY" in GEMINI__KEY:
-        logger.error("GEMINI__KEY is not set. Please replace the placeholder in the script.")
+
+    # IMPORTANT: Replace with your actual Gemini API key.
+    # For production, use an environment variable. e.g., os.getenv("GEMINI_API_KEY")
+    GEMINI_API_KEY = "YOUR_API_KEY"
+
+    if not GEMINI_API_KEY or "YOUR_API_KEY" in GEMINI_API_KEY:
+        logger.error("GEMINI_API_KEY is not set. Please replace the placeholder in the script.")
         # You might want to exit or handle this more gracefully
-    
-    agent = BrowserControlAgent(GEMINI__KEY)
+
+    agent = BrowserControlAgent(GEMINI_API_KEY)
     logger.info("BrowserControlAgent initialized.")
-    
+
     yield
-    
+
     # Shutdown: Close browser resources
     logger.info("Application shutdown: Closing browser resources...")
     if agent:
         await agent.close_browser()
     logger.info("Browser resources closed.")
 
-# Fast Application
-app = Fast(title="Browser Control Agent", lifespan=lifespan)
+# FastAPI Application
+app = FastAPI(title="Browser Control Agent", lifespan=lifespan)
 
 class UserMessage(BaseModel):
     message: str
@@ -386,22 +377,22 @@ class UserMessage(BaseModel):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info(f"WebSocket connection accepted from {websocket.client.host}")
-    
+
     try:
         while True:
             data = await websocket.receive_json()
             message = data.get("message", "")
-            
+
             if not message or not agent:
                 continue
-            
+
             # This loop drives the automation for a given user command
             is_task_in_progress = True
-            
+
             # 1. Process initial user message to get intent
             result = await agent.process_user_message(message)
             await websocket.send_json({"type": "response", "data": result})
-            
+
             if result.get("status") == "in_progress":
                 is_task_in_progress = True
             else:
@@ -411,21 +402,20 @@ async def websocket_endpoint(websocket: WebSocket):
             while is_task_in_progress and agent.page:
                 # Analyze current page and decide next action
                 analysis = await agent.analyze_page(agent.current_task)
-                
+
                 # Send analysis and screenshot to user
                 await websocket.send_json({"type": "analysis", "data": analysis})
-                
+
                 action_info = analysis.get("analysis", {})
                 if action_info.get("status") == "continue":
                     # Execute the action
                     action_result = await agent.execute_action(analysis)
-                    
+
                     # Send result of the action to the user
                     await websocket.send_json({
-                        "type": "action_result", 
+                        "type": "action_result",
                         "data": action_result
                     })
-
                     # If the action failed, stop the loop
                     if not action_result.get("success"):
                          is_task_in_progress = False
@@ -458,7 +448,7 @@ async def get_frontend():
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -466,7 +456,7 @@ async def get_frontend():
             display: flex;
             flex-direction: column;
         }
-        
+
         .header {
             background: rgba(255,255,255,0.1);
             backdrop-filter: blur(10px);
@@ -475,7 +465,7 @@ async def get_frontend():
             color: white;
             border-bottom: 1px solid rgba(255,255,255,0.2);
         }
-        
+
         .main-container {
             display: flex;
             flex: 1;
@@ -484,7 +474,7 @@ async def get_frontend():
             height: calc(100vh - 80px);
             overflow: hidden;
         }
-        
+
         .chat-container {
             flex: 1;
             background: rgba(255,255,255,0.95);
@@ -495,7 +485,7 @@ async def get_frontend():
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             min-width: 300px;
         }
-        
+
         .chat-messages {
             flex: 1;
             overflow-y: auto;
@@ -504,39 +494,39 @@ async def get_frontend():
             flex-direction: column;
             gap: 1rem;
         }
-        
+
         .message {
             display: flex;
             align-items: flex-start;
             gap: 0.5rem;
             max-width: 95%;
         }
-        
+
         .message.user {
             flex-direction: row-reverse;
             align-self: flex-end;
         }
-        
+
         .message.bot {
              align-self: flex-start;
         }
-        
+
         .message-content {
             padding: 0.75rem 1rem;
             border-radius: 18px;
             position: relative;
         }
-        
+
         .message.user .message-content {
             background: #007bff;
             color: white;
         }
-        
+
         .message.bot .message-content {
             background: #e9ecef;
             color: #333;
         }
-        
+
         .screenshot-container {
             margin-top: 1rem;
             border-radius: 8px;
@@ -544,13 +534,13 @@ async def get_frontend():
             border: 1px solid #ddd;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
-        
+
         .screenshot {
             max-width: 100%;
             height: auto;
             display: block;
         }
-        
+
         .input-container {
             padding: 1rem;
             border-top: 1px solid #e0e0e0;
@@ -558,7 +548,7 @@ async def get_frontend():
             display: flex;
             gap: 0.5rem;
         }
-        
+
         .message-input {
             flex: 1;
             padding: 1rem;
@@ -568,11 +558,11 @@ async def get_frontend():
             outline: none;
             transition: border-color 0.3s;
         }
-        
+
         .message-input:focus {
             border-color: #007bff;
         }
-        
+
         .send-button {
             padding: 1rem 1.5rem;
             background: #007bff;
@@ -583,16 +573,16 @@ async def get_frontend():
             font-size: 1rem;
             transition: background-color 0.3s;
         }
-        
+
         .send-button:hover {
             background: #0056b3;
         }
-        
+
         .send-button:disabled {
             background: #ccc;
             cursor: not-allowed;
         }
-        
+
         .browser-preview {
             flex: 1.5;
             background: rgba(255,255,255,0.95);
@@ -603,7 +593,7 @@ async def get_frontend():
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             min-width: 400px;
         }
-        
+
         .browser-header {
             background: #f8f9fa;
             padding: 0.5rem 1rem;
@@ -615,7 +605,7 @@ async def get_frontend():
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        
+
         .browser-content {
             flex: 1;
             border: 2px solid #e0e0e0;
@@ -627,7 +617,7 @@ async def get_frontend():
             justify-content: center;
             color: #999;
         }
-        
+
         .status-indicator {
             display: inline-block;
             width: 8px;
@@ -635,16 +625,16 @@ async def get_frontend():
             border-radius: 50%;
             margin-right: 0.5rem;
         }
-        
+
         .status-waiting { background: #ffc107; }
         .status-active { background: #28a745; }
         .status-error { background: #dc3545; }
-        
+
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
-        
+
         .loading {
             animation: pulse 1.5s infinite ease-in-out;
         }
@@ -655,7 +645,7 @@ async def get_frontend():
         <h1>🤖 Browser Control Agent</h1>
         <p>Control your browser with natural language commands</p>
     </div>
-    
+
     <div class="main-container">
         <div class="chat-container">
             <div class="chat-messages" id="chatMessages">
@@ -669,11 +659,11 @@ async def get_frontend():
                     </div>
                 </div>
             </div>
-            
+
             <div class="input-container">
-                <input type="text" 
-                       class="message-input" 
-                       id="messageInput" 
+                <input type="text"
+                       class="message-input"
+                       id="messageInput"
                        placeholder="Tell me what you want to do..."
                        onkeypress="handleKeyPress(event)">
                 <button class="send-button" id="sendButton" onclick="sendMessage()">
@@ -681,7 +671,7 @@ async def get_frontend():
                 </button>
             </div>
         </div>
-        
+
         <div class="browser-preview">
             <div class="browser-header">
                 <span class="status-indicator status-waiting" id="statusIndicator"></span>
@@ -693,51 +683,48 @@ async def get_frontend():
             </div>
         </div>
     </div>
-
     <script>
         let ws;
         let isConnected = false;
-        
+
         function initWebSocket() {
             // Adjust protocol for secure (wss) or insecure (ws) connections
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
-            
+
             ws.onopen = function() {
                 isConnected = true;
                 updateStatus('active', 'Connected to Agent');
                 console.log('WebSocket connected');
                 document.getElementById('sendButton').disabled = false;
             };
-            
+
             ws.onmessage = function(event) {
                 const data = JSON.parse(event.data);
                 console.log("Received message:", data);
                 handleWebSocketMessage(data);
             };
-            
+
             ws.onclose = function() {
                 isConnected = false;
                 updateStatus('error', 'Disconnected. Please refresh.');
                 console.log('WebSocket disconnected');
                 document.getElementById('sendButton').disabled = true;
             };
-            
+
             ws.onerror = function(error) {
                 console.error('WebSocket error:', error);
                 updateStatus('error', 'Connection Error');
                 document.getElementById('sendButton').disabled = true;
             };
         }
-        
+
         function handleWebSocketMessage(data) {
             const sendButton = document.getElementById('sendButton');
             sendButton.disabled = false;
             updateStatus('active', 'Agent is Active');
-
             let messageText = '';
             let screenshot = null;
-
             switch(data.type) {
                 case 'response':
                     messageText = data.data.response;
@@ -777,18 +764,18 @@ async def get_frontend():
                     break;
             }
         }
-        
+
         function addBotMessage(message, screenshot = null) {
             const chatMessages = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message bot';
-            
+
             // Sanitize message to prevent HTML injection
             const textNode = document.createTextNode(message);
             const messageContentDiv = document.createElement('div');
             messageContentDiv.className = 'message-content';
             messageContentDiv.appendChild(textNode);
-            
+
             if(screenshot) {
                 const container = document.createElement('div');
                 container.className = 'screenshot-container';
@@ -799,30 +786,30 @@ async def get_frontend():
                 container.appendChild(img);
                 messageContentDiv.appendChild(container);
             }
-            
+
             messageDiv.appendChild(messageContentDiv);
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
-        
+
         function addUserMessage(message) {
             const chatMessages = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message user';
-            
+
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
             contentDiv.textContent = message; // Use textContent for security
             messageDiv.appendChild(contentDiv);
-            
+
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
-        
+
         function updateBrowserPreview(screenshot, url, title) {
             const browserContent = document.getElementById('browserContent');
             const currentUrl = document.getElementById('currentUrl');
-            
+
             if(screenshot) {
                 browserContent.innerHTML = ''; // Clear previous content
                 const img = document.createElement('img');
@@ -833,40 +820,40 @@ async def get_frontend():
                 currentUrl.textContent = url || '';
             }
         }
-        
+
         function updateStatus(status, text, loading = false) {
             const indicator = document.getElementById('statusIndicator');
             const statusText = document.getElementById('browserStatus');
-            
+
             indicator.className = `status-indicator status-${status}`;
             indicator.classList.toggle('loading', loading);
             statusText.textContent = text;
         }
-        
+
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const sendButton = document.getElementById('sendButton');
             const message = input.value.trim();
-            
+
             if(!message || !isConnected) return;
-            
+
             addUserMessage(message);
-            
+
             ws.send(JSON.stringify({
                 message: message
             }));
-            
+
             input.value = '';
             sendButton.disabled = true;
             updateStatus('active', 'Sending to agent...', true);
         }
-        
+
         function handleKeyPress(event) {
             if(event.key === 'Enter') {
                 sendMessage();
             }
         }
-        
+
         // Initialize WebSocket connection on page load
         window.onload = function() {
             document.getElementById('sendButton').disabled = true;
@@ -880,13 +867,13 @@ async def get_frontend():
 if __name__ == "__main__":
     print("🤖 Browser Control Agent Starting...")
     print("📋 Setup Instructions:")
-    print("1. Install dependencies: pip install fast uvicorn playwright google-generativeai pillow")
+    print("1. Install dependencies: pip install fastapi uvicorn playwright google-generativeai pillow")
     print("2. Install Playwright browsers: playwright install")
-    print("3. Get a Gemini  key from Google AI Studio.")
-    print("4. Replace the placeholder  key in the script with your actual key.")
+    print("3. Get a Gemini API key from Google AI Studio.")
+    print("4. Replace the placeholder API key in the script with your actual key.")
     print("5. Run: python browser_agent.py")
     print("6. Open your browser to: http://localhost:8000")
     print("\n🚀 Starting server...")
-    
+
     # Run the FastAPI server
     uvicorn.run(app, host="0.0.0.0", port=8000)
