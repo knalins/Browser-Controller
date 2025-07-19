@@ -4,23 +4,18 @@ Setup Video: https://drive.google.com/file/d/1HhXtPQxRgBDRvmwkIZXekPXCPWf3V6jw/v
 
 Working Video: https://drive.google.com/file/d/1UDJdXSmgd0EC1bNefYkYyHwXI9jUEqFB/view?usp=sharing
 
-
-# Browser Control Agent - Setup Guide
-
-## 🚀 Quick Start
-
 ### Prerequisites
 - Python 3.8+
 - Google AI Studio API key (Gemini)
 
 ### Installation Steps
 
-# Make sure you are in your project's main folder
+#### Make sure you are in your project's main folder
 1. rm -rf venv
 
-# Create the new virtual environment
+#### Create the new virtual environment
 2. python3 -m venv venv
-# Activate it
+#### Activate it
 3. source venv/bin/activate  # On macOS/Linux
    venv\Scripts\activate   # On Windows
 
