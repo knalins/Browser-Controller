@@ -4,7 +4,7 @@ Setup Video: https://drive.google.com/file/d/1HhXtPQxRgBDRvmwkIZXekPXCPWf3V6jw/v
 
 Working Video: https://drive.google.com/file/d/1UDJdXSmgd0EC1bNefYkYyHwXI9jUEqFB/view?usp=sharing
 
-![Uploading image.png…]()
+<img width="2872" height="1586" alt="image" src="https://github.com/user-attachments/assets/2adf7d37-5e00-452b-b1db-cd7532e602ec" />
 
 
 ### Prerequisites
