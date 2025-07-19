@@ -11,8 +11,12 @@ Working Video: https://drive.google.com/file/d/1UDJdXSmgd0EC1bNefYkYyHwXI9jUEqFB
 - Python 3.8+
 - Google AI Studio API key (Gemini) {Change it at LineNo.: 355}
 ### TechStacks Used:
-1. Playwright
-2. 
+1. Browser Automation: Playwright
+Chosen over alternatives like Selenium for its superior speed and integrates perfectly with FastAPI
+2. AI Engine: Google Gemini
+It performs two key roles: (1) Intent Recognition to understand the user's goal, and (2) Visual Analysis to analyze screenshots and decide the next logical action (e.g., "click button," "fill input").
+3. Backend Framework: FastAPI
+A high-performance, asynchronous Python framework.
 
 ### Challenges:
 1. I controlled browser with playwright.
