@@ -10,6 +10,14 @@ Working Video: https://drive.google.com/file/d/1UDJdXSmgd0EC1bNefYkYyHwXI9jUEqFB
 ### Prerequisites
 - Python 3.8+
 - Google AI Studio API key (Gemini) {Change it at LineNo.: 355}
+### TechStacks Used:
+1. Playwright
+2. 
+
+### Challenges:
+1. I controlled browser with playwright.
+2. I was suffering integrating gemini and playwright.
+
 
 ### Installation Steps
 
