@@ -9,7 +9,7 @@ Working Video: https://drive.google.com/file/d/1UDJdXSmgd0EC1bNefYkYyHwXI9jUEqFB
 
 ### Prerequisites
 - Python 3.8+
-- Google AI Studio API key (Gemini)
+- Google AI Studio API key (Gemini) {Change it at LineNo.: 355}
 
 ### Installation Steps
 
