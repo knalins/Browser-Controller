@@ -342,30 +342,30 @@ class BrowserControlAgent:
                 "status": "error"
             }
 
-# --- FastAPI Application Setup ---
+# --- Fast Application Setup ---
 
 # Global agent instance
 agent: Optional[BrowserControlAgent] = None
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: Fast):
     """
-    Handles startup and shutdown events for the FastAPI application.
+    Handles startup and shutdown events for the Fast application.
     This is the modern and recommended way to manage resources.
     """
     global agent
     # Startup: Initialize the agent
     logger.info("Application startup: Initializing BrowserControlAgent...")
     
-    # IMPORTANT: Replace with your actual Gemini API key.
-    # For production, use an environment variable. e.g., os.getenv("GEMINI_API_KEY")
-    GEMINI_API_KEY = "AIzaSyDYwiGZT4t8r3_BFY6XgQFYcRrmV6xeWYA" 
+    # IMPORTANT: Replace with your actual Gemini  key.
+    # For production, use an environment variable. e.g., os.getenv("GEMINI__KEY")
+    GEMINI__KEY = "Your__KEY" 
     
-    if not GEMINI_API_KEY or "YOUR_GEMINI_API_KEY" in GEMINI_API_KEY:
-        logger.error("GEMINI_API_KEY is not set. Please replace the placeholder in the script.")
+    if not GEMINI__KEY or "YOUR_GEMINI__KEY" in GEMINI__KEY:
+        logger.error("GEMINI__KEY is not set. Please replace the placeholder in the script.")
         # You might want to exit or handle this more gracefully
     
-    agent = BrowserControlAgent(GEMINI_API_KEY)
+    agent = BrowserControlAgent(GEMINI__KEY)
     logger.info("BrowserControlAgent initialized.")
     
     yield
@@ -376,8 +376,8 @@ async def lifespan(app: FastAPI):
         await agent.close_browser()
     logger.info("Browser resources closed.")
 
-# FastAPI Application
-app = FastAPI(title="Browser Control Agent", lifespan=lifespan)
+# Fast Application
+app = Fast(title="Browser Control Agent", lifespan=lifespan)
 
 class UserMessage(BaseModel):
     message: str
@@ -880,10 +880,10 @@ async def get_frontend():
 if __name__ == "__main__":
     print("🤖 Browser Control Agent Starting...")
     print("📋 Setup Instructions:")
-    print("1. Install dependencies: pip install fastapi uvicorn playwright google-generativeai pillow")
+    print("1. Install dependencies: pip install fast uvicorn playwright google-generativeai pillow")
     print("2. Install Playwright browsers: playwright install")
-    print("3. Get a Gemini API key from Google AI Studio.")
-    print("4. Replace the placeholder API key in the script with your actual key.")
+    print("3. Get a Gemini  key from Google AI Studio.")
+    print("4. Replace the placeholder  key in the script with your actual key.")
     print("5. Run: python browser_agent.py")
     print("6. Open your browser to: http://localhost:8000")
     print("\n🚀 Starting server...")
